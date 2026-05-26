@@ -24,8 +24,6 @@ export default defineNuxtConfig({
   // Runtime config (server-side secrets + public client config)
   runtimeConfig: {
     // Server-side only (private)
-    stockApiKey: process.env.STOCK_API_KEY || '',
-    stockApiSecret: process.env.STOCK_API_SECRET || '',
     stockApiBaseUrl: process.env.STOCK_API_BASE_URL || 'https://openapi.koreainvestment.com:9443',
     jwtSecret: process.env.JWT_SECRET || 'change-me-in-production',
     databaseUrl: process.env.DATABASE_URL || '',

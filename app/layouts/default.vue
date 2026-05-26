@@ -8,7 +8,7 @@
       </div>
 
       <nav class="sidebar-nav">
-        <NuxtLink to="/" class="nav-item" active-class="active" exact>
+        <NuxtLink to="/dashboard" class="nav-item" active-class="active" exact>
           <span class="nav-icon">🏠</span>
           <span>대시보드</span>
         </NuxtLink>
@@ -57,9 +57,34 @@
           <h1 class="page-title">{{ pageTitle }}</h1>
         </div>
         <div class="topbar-right">
-          <div class="account-chip">
-            <span class="text-muted text-sm">계좌</span>
-            <span class="account-no text-mono">{{ accountStore.accountNo || '미설정' }}</span>
+          <!-- 사용자 정보 -->
+          <div v-if="authStore.user" class="user-chip">
+            <span class="user-name">{{ authStore.user.name }}님</span>
+            <button class="btn btn-ghost btn-sm text-fall" @click="authStore.logout">로그아웃</button>
+          </div>
+
+          <div class="divider-vertical" />
+
+          <!-- 계좌 선택 드롭다운 -->
+          <div class="account-selector">
+            <select
+              v-if="accountStore.registeredAccounts.length > 0"
+              :value="accountStore.accountNo"
+              class="account-select"
+              @change="onAccountChange"
+            >
+              <option
+                v-for="acc in accountStore.registeredAccounts"
+                :key="acc.accountNo"
+                :value="acc.accountNo"
+              >
+                {{ acc.label }} ({{ acc.accountNo }})
+              </option>
+            </select>
+            <div v-else class="account-chip">
+              <span class="text-muted text-sm">계좌</span>
+              <span class="account-no text-mono">{{ accountStore.accountNo || '미설정' }}</span>
+            </div>
           </div>
           <button class="btn btn-ghost btn-sm" @click="refreshAll">
             <span>↻</span>
@@ -77,8 +102,10 @@
 
 <script setup lang="ts">
 import { useAccountStore } from '~/stores/account'
+import { useAuthStore } from '~/stores/auth'
 
 const accountStore = useAccountStore()
+const authStore = useAuthStore()
 const route = useRoute()
 
 // Market hours (KSX: 09:00-15:30 KST)
@@ -113,7 +140,7 @@ onUnmounted(() => clearInterval(timer))
 
 // Page title
 const pageTitles: Record<string, string> = {
-  '/': '대시보드',
+  '/dashboard': '대시보드',
   '/market': '시장 현황',
   '/account': '계좌 관리',
   '/trading': '매매 주문',
@@ -126,6 +153,19 @@ const pageTitle = computed(() => pageTitles[route.path] || 'JStock')
 async function refreshAll() {
   await accountStore.fetchBalance()
 }
+
+async function onAccountChange(e: Event) {
+  const no = (e.target as HTMLSelectElement).value
+  accountStore.setAccountNo(no)
+  await accountStore.refreshAll()
+}
+
+onMounted(async () => {
+  await accountStore.fetchRegisteredAccounts()
+  if (accountStore.accountNo) {
+    await accountStore.refreshAll()
+  }
+})
 </script>
 
 <style scoped>
@@ -277,6 +317,44 @@ async function refreshAll() {
 .account-no {
   font-size: 0.875rem;
   color: var(--color-text);
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.user-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.divider-vertical {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+}
+
+.account-selector {}
+
+.account-select {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  padding: 4px 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.account-select:hover,
+.account-select:focus {
+  border-color: var(--color-primary);
 }
 
 .page-content {

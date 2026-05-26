@@ -1,110 +1,84 @@
-# JStock - 증권 계좌 관리 시스템
+# JStock - 증권 계좌 관리 시스템 (다중 사용자 지원)
+
+## 주요 기능
+- **다중 사용자 시스템**: 회원가입/로그인 (JWT 인증)
+- **증권 계좌 등록**: 한국투자증권 API Key를 여러 개 등록하여 선택 사용 가능
+- **대시보드**: 자산 현황 요약
+- **매매 주문 & 거래 내역**: 주식 매수/매도 및 미체결 주문 관리
 
 ## 프로젝트 구조
 
 ```
 JStock/
-├── app/                          # Frontend (Nuxt 4 - app/ 디렉토리)
-│   ├── assets/
-│   │   └── css/
-│   │       └── main.css          # 글로벌 CSS (디자인 시스템)
-│   ├── layouts/
-│   │   └── default.vue           # 사이드바 + 탑바 레이아웃
+├── app/                          # Frontend (Nuxt 4)
 │   ├── pages/
-│   │   ├── index.vue             # 대시보드
-│   │   ├── market.vue            # 시장 현황 (종목 시세 조회)
-│   │   ├── account.vue           # 계좌 관리 (잔고, 보유 종목)
-│   │   ├── trading.vue           # 매매 주문 (매수/매도)
-│   │   ├── portfolio.vue         # 포트폴리오
-│   │   ├── history.vue           # 거래 내역
-│   │   └── settings.vue          # 설정
-│   ├── stores/
-│   │   ├── account.ts            # Pinia - 계좌/잔고/보유종목 상태
-│   │   └── market.ts             # Pinia - 시세/관심종목 상태
-│   └── app.vue                   # Nuxt 앱 루트
+│   │   ├── login.vue, register.vue
+│   │   ├── account/              # 계좌 목록 및 추가 페이지
+│   │   └── ...
+│   ├── layouts/
+│   │   └── default.vue           # 사이드바 + 탑바 (계좌 드롭다운)
+│   ├── middleware/
+│   │   └── auth.ts               # 라우트 보호 미들웨어
+│   └── stores/
+│       ├── auth.ts, account.ts, market.ts
 │
 ├── server/                       # Backend (Nitro 서버)
 │   ├── api/
-│   │   ├── market/
-│   │   │   ├── quote/[code].get.ts   # GET /api/market/quote/:code
-│   │   │   └── chart/[code].get.ts   # GET /api/market/chart/:code
-│   │   ├── account/
-│   │   │   ├── balance.get.ts        # GET /api/account/balance
-│   │   │   └── holdings.get.ts       # GET /api/account/holdings
-│   │   └── trading/
-│   │       ├── order.post.ts         # POST /api/trading/order
-│   │       └── orders/
-│   │           └── pending.get.ts    # GET /api/trading/orders/pending
+│   │   ├── auth/                 # 로그인, 회원가입 API
+│   │   ├── account/              # 계좌 CRUD 및 잔고 조회
+│   │   └── trading/              # 매매 주문 API
+│   ├── db/
+│   │   ├── schema.ts             # Drizzle ORM (users, broker_accounts)
+│   │   └── index.ts              # SQLite 연결
+│   ├── middleware/
+│   │   └── auth.ts               # JWT 토큰 검증
 │   ├── services/
-│   │   └── stock.service.ts      # 한국투자증권 Open API 서비스
+│   │   └── stock.service.ts      # 한국투자증권 Open API 연동
 │   └── utils/
-│       └── helpers.ts            # 서버 유틸리티 함수
+│       └── auth.ts               # JWT 및 Bcrypt 헬퍼
 │
-├── types/
-│   └── stock.ts                  # 공유 TypeScript 타입 정의
-│
-├── public/
-│   └── favicon.svg
-│
-├── .env                          # 환경 변수 (API Key 설정)
-├── .env.example                  # 환경 변수 예시
-├── nuxt.config.ts                # Nuxt 설정
+├── data/                         # SQLite DB 저장소 (`jstock.db`)
+├── .env                          # 환경 변수 (DB 경로, JWT 시크릿 등)
+├── nuxt.config.ts
 └── package.json
 ```
 
-## API 엔드포인트
-
-| Method | Path | 설명 |
-|--------|------|------|
-| GET | `/api/market/quote/:code` | 주식 현재가 조회 |
-| GET | `/api/market/chart/:code?period=D&startDate=&endDate=` | 차트 데이터 |
-| GET | `/api/account/balance?accountNo=` | 계좌 잔고 조회 |
-| GET | `/api/account/holdings?accountNo=` | 보유 종목 조회 |
-| POST | `/api/trading/order` | 주문 접수 (매수/매도) |
-| GET | `/api/trading/orders/pending?accountNo=` | 미체결 주문 조회 |
-
 ## 시작하기
 
-### 1. 의존성 설치
+### 1. 패키지 설치
 ```bash
 npm install --legacy-peer-deps
 ```
 
-### 2. 환경 변수 설정
-`.env` 파일에 한국투자증권 API 키를 입력:
+### 2. 환경 변수 설정 (`.env`)
 ```env
-STOCK_API_KEY=your_app_key
-STOCK_API_SECRET=your_app_secret
-STOCK_ACCOUNT_NO=12345678-01
-JWT_SECRET=your_secret
+DATABASE_URL=./data/jstock.db
+JWT_SECRET=change-this-to-a-strong-secret
+JWT_EXPIRES_IN=7d
+PORT=5000
 ```
 
-### 3. 개발 서버 실행
+### 3. 데이터베이스 초기화 (SQLite)
+테이블 생성 및 초기 `admin` 계정을 생성합니다.
+```bash
+npm run db:migrate
+```
+*초기 어드민 계정: `admin@jstock.local` / `admin1234!`*
+
+### 4. 개발 서버 실행
 ```bash
 npm run dev
 ```
-→ http://localhost:5000
+→ http://localhost:5000 접속 후 로그인
 
-### 4. 프로덕션 빌드
-```bash
-npm run build
-npm run preview
-```
-
-## API 연동 정보
-
-- **증권사**: 한국투자증권 Open API
-- **포털**: https://apiportal.koreainvestment.com
-- **인증**: OAuth2 (Client Credentials)
-- **문서**: https://apiportal.koreainvestment.com/apiservice
+### 5. API Key 등록
+로그인 후 **계좌 관리 > 계좌 추가** 메뉴에서 한국투자증권 API Key(App Key, App Secret)를 등록해야 실제 잔고 조회 및 주문이 가능합니다.
 
 ## 기술 스택
-
 | 구분 | 기술 |
 |------|------|
 | Frontend | Nuxt 4, Vue 3, Pinia |
-| Backend | Nitro (Nuxt 서버엔진) |
+| Backend | Nitro |
+| Database | SQLite, Drizzle ORM, better-sqlite3 |
+| Auth | JWT (jose), Bcrypt |
 | 스타일 | Vanilla CSS (다크모드) |
-| 유효성 | Zod |
-| 타입 | TypeScript |
-| 폰트 | Inter, JetBrains Mono |

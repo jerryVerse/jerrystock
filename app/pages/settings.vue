@@ -1,41 +1,68 @@
 <template>
   <NuxtLayout>
     <div class="settings-page fade-in">
+      
+      <!-- Registered Accounts List -->
+      <div class="card mb-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-semibold">등록된 계좌 목록</h2>
+          <button class="btn btn-ghost btn-sm" @click="accountStore.fetchRegisteredAccounts">↻ 새로고침</button>
+        </div>
+        
+        <div v-if="accountStore.loadingAccounts" class="text-muted text-sm py-4 text-center">로딩 중...</div>
+        <div v-else-if="accountStore.registeredAccounts.length === 0" class="empty-state">
+          등록된 계좌가 없습니다. 아래 폼에서 계좌를 추가해 주세요.
+        </div>
+        <div v-else class="account-list">
+          <div v-for="acc in accountStore.registeredAccounts" :key="acc.id" class="account-item">
+            <div class="account-info">
+              <span class="badge badge-blue">{{ acc.type || 'NORMAL' }}</span>
+              <div class="account-text">
+                <span class="font-semibold">{{ acc.label }}</span>
+                <span class="text-mono text-sm text-muted">{{ acc.accountNo }}</span>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm text-fall" @click="handleDelete(acc.id)" :disabled="deleting === acc.id">
+              {{ deleting === acc.id ? '삭제 중...' : '삭제' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-grid">
         <!-- API Settings -->
         <div class="card">
-          <h2 class="text-lg font-semibold mb-6">API 설정</h2>
-          <div class="settings-form">
+          <h2 class="text-lg font-semibold mb-6">새 계좌 등록</h2>
+          <form class="settings-form" autocomplete="off" @submit.prevent="saveSettings">
+            <div class="input-group">
+              <label class="input-label">계좌 별칭</label>
+              <input v-model="form.label" id="label" name="label" autocomplete="off" class="input" placeholder="예: 주식계좌 1" required />
+            </div>
             <div class="input-group">
               <label class="input-label">계좌번호</label>
-              <input v-model="form.accountNo" class="input" placeholder="12345678-01" />
-              <p class="input-hint">한국투자증권 계좌번호 (8자리-2자리)</p>
+              <input v-model="form.accountNo" id="accountNo" name="accountNo" autocomplete="off" data-lpignore="true" class="input" placeholder="12345678-01" required />
+              <p class="input-hint">한국투자증권 계좌번호 (8자리-2자리 형식으로 입력)</p>
             </div>
             <div class="input-group">
               <label class="input-label">App Key</label>
-              <input v-model="form.appKey" class="input" type="password" placeholder="API App Key" />
+              <input v-model="form.appKey" id="appKey" name="appKey" autocomplete="new-password" class="input" type="password" placeholder="API App Key" required />
             </div>
             <div class="input-group">
               <label class="input-label">App Secret</label>
-              <input v-model="form.appSecret" class="input" type="password" placeholder="API App Secret" />
-            </div>
-            <div class="input-group">
-              <label class="input-label">API Base URL</label>
-              <input v-model="form.baseUrl" class="input" placeholder="https://openapi.koreainvestment.com:9443" />
+              <input v-model="form.appSecret" id="appSecret" name="appSecret" autocomplete="new-password" class="input" type="password" placeholder="API App Secret" required />
             </div>
 
             <div class="settings-actions">
-              <button class="btn btn-primary" @click="saveSettings">저장</button>
-              <button class="btn btn-ghost" @click="testConnection" :disabled="testing">
-                <span v-if="testing" class="spinner" style="width:14px;height:14px;" />
-                <span>연결 테스트</span>
+              <button class="btn btn-primary" type="submit" :disabled="saving">
+                <span v-if="saving" class="spinner" style="width:14px;height:14px;" />
+                <span>계좌 등록</span>
               </button>
             </div>
 
-            <div v-if="testResult" class="test-result fade-in" :class="testSuccess ? 'text-rise' : 'text-fall'">
-              {{ testResult }}
+            <div v-if="submitResult" class="test-result fade-in" :class="submitSuccess ? 'text-rise' : 'text-fall'">
+              {{ submitResult }}
             </div>
-          </div>
+          </form>
         </div>
 
         <!-- App Info -->
@@ -80,15 +107,16 @@ useHead({ title: '설정 | JStock' })
 const accountStore = useAccountStore()
 
 const form = reactive({
-  accountNo: accountStore.accountNo,
+  label: '',
+  accountNo: '',
   appKey: '',
   appSecret: '',
-  baseUrl: 'https://openapi.koreainvestment.com:9443',
 })
 
-const testing = ref(false)
-const testResult = ref('')
-const testSuccess = ref(false)
+const saving = ref(false)
+const submitResult = ref('')
+const submitSuccess = ref(false)
+const deleting = ref<number | null>(null)
 
 const endpoints = [
   { method: 'GET', path: '/api/market/quote/:code', desc: '주식 현재가' },
@@ -99,38 +127,118 @@ const endpoints = [
   { method: 'GET', path: '/api/trading/orders/pending', desc: '미체결 주문' },
 ]
 
-function saveSettings() {
-  if (form.accountNo) {
-    accountStore.setAccountNo(form.accountNo)
-  }
-  alert('설정이 저장되었습니다. API Key는 .env 파일에 설정해주세요.')
-}
+onMounted(() => {
+  accountStore.fetchRegisteredAccounts()
+})
 
-async function testConnection() {
-  if (!form.accountNo) {
-    testResult.value = '계좌번호를 입력해주세요.'
-    testSuccess.value = false
+async function saveSettings() {
+  saving.value = true
+  submitResult.value = ''
+  
+  // 계좌번호 파싱 (12345678-01 -> 12345678, 01)
+  const match = form.accountNo.match(/^(\d{6,10})-(\d{2})$/)
+  if (!match) {
+    submitSuccess.value = false
+    submitResult.value = '❌ 계좌번호 형식을 확인해주세요. (예: 12345678-01)'
+    saving.value = false
     return
   }
-  testing.value = true
-  testResult.value = ''
+
+  const [, no, suffix] = match
+
   try {
-    await $fetch(`/api/account/balance?accountNo=${form.accountNo}`)
-    testSuccess.value = true
-    testResult.value = '✅ API 연결 성공!'
+    const res = await $fetch('/api/account/create', {
+      method: 'POST',
+      body: {
+        label: form.label,
+        accountNo: no,
+        accountSuffix: suffix,
+        apiKey: form.appKey,
+        apiSecret: form.appSecret,
+      }
+    })
+    
+    submitSuccess.value = true
+    submitResult.value = '✅ 계좌가 성공적으로 등록되었습니다!'
+    
+    // 폼 초기화
+    form.label = ''
+    form.accountNo = ''
+    form.appKey = ''
+    form.appSecret = ''
+    
+    // 목록 새로고침
+    await accountStore.fetchRegisteredAccounts()
+  } catch (err: unknown) {
+    submitSuccess.value = false
+    submitResult.value = `❌ 등록 실패: ${(err as { data?: { message?: string } })?.data?.message || '알 수 없는 오류'}`
+  } finally {
+    saving.value = false
   }
-  catch (err: unknown) {
-    testSuccess.value = false
-    testResult.value = `❌ 연결 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`
-  }
-  finally {
-    testing.value = false
+}
+
+async function handleDelete(id: number) {
+  if (!confirm('정말 이 계좌를 삭제하시겠습니까?')) return
+  
+  deleting.value = id
+  try {
+    await accountStore.deleteAccount(id)
+  } catch (err) {
+    alert('삭제 중 오류가 발생했습니다.')
+  } finally {
+    deleting.value = null
   }
 }
 </script>
 
 <style scoped>
 .settings-page { display: flex; flex-direction: column; gap: var(--space-6); }
+
+.mb-6 { margin-bottom: var(--space-6); }
+.mb-4 { margin-bottom: var(--space-4); }
+.mt-4 { margin-top: var(--space-4); }
+.py-4 { padding-top: var(--space-4); padding-bottom: var(--space-4); }
+.text-center { text-align: center; }
+.flex { display: flex; }
+.justify-between { justify-content: space-between; }
+.items-center { align-items: center; }
+
+.empty-state {
+  text-align: center;
+  padding: var(--space-6);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  color: var(--color-text-muted);
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+}
+
+.account-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.account-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 
 .settings-grid {
   display: grid;
@@ -146,7 +254,7 @@ async function testConnection() {
 .input-label { font-size: 0.8125rem; color: var(--color-text-secondary); font-weight: 500; }
 .input-hint { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 2px; }
 
-.settings-actions { display: flex; gap: var(--space-3); }
+.settings-actions { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
 
 .test-result {
   padding: var(--space-2) var(--space-3);
@@ -160,4 +268,6 @@ async function testConnection() {
 
 .endpoint-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .endpoint-item { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+.divider { height: 1px; background: rgba(255, 255, 255, 0.1); margin: var(--space-4) 0; }
 </style>
